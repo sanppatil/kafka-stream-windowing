@@ -1,21 +1,28 @@
 package com.kafka.stream;
 
+import java.time.Duration;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
-
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.Topology;
+import org.apache.kafka.streams.kstream.KGroupedStream;
 import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.kstream.KTable;
+import org.apache.kafka.streams.kstream.Produced;
+import org.apache.kafka.streams.kstream.TimeWindowedKStream;
+import org.apache.kafka.streams.kstream.TimeWindows;
+import org.apache.kafka.streams.kstream.Windowed;
+import org.apache.kafka.streams.kstream.WindowedSerdes;
 
-public class StreamsMain {
+public class WindowingMain {
 
 	public static void main(String[] args) {
 		// Set up the configuration.
 		final Properties props = new Properties();
-		props.put(StreamsConfig.APPLICATION_ID_CONFIG, "streams-example");
+		props.put(StreamsConfig.APPLICATION_ID_CONFIG, "windowing-example");
 		props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
 		props.put(StreamsConfig.CACHE_MAX_BYTES_BUFFERING_CONFIG, 0);
 		// Since the input topic uses Strings for both key and value, set the default
@@ -25,9 +32,20 @@ public class StreamsMain {
 
 		// Get the source stream.
 		final StreamsBuilder builder = new StreamsBuilder();
-		final KStream<String, String> source = builder.stream("streams-input-topic");
+		KStream<String, String> source = builder.stream("windowing-input-topic");
 
-		source.to("streams-output-topic");
+		KGroupedStream<String, String> groupedStream = source.groupByKey();
+
+		// Apply windowing to the stream with tumbling time windows of 10 seconds.
+		TimeWindowedKStream<String, String> windowedStream = groupedStream
+				.windowedBy(TimeWindows.of(Duration.ofSeconds(10)));
+
+		// Combine the values of all records with the same key into a string separated
+		// by spaces, using 10-second windows.
+		KTable<Windowed<String>, String> reducedTable = windowedStream
+				.reduce((aggValue, newValue) -> aggValue + " " + newValue);
+		reducedTable.toStream().to("windowing-output-topic",
+				Produced.with(WindowedSerdes.timeWindowedSerdeFrom(String.class), Serdes.String()));
 
 		final Topology topology = builder.build();
 		final KafkaStreams streams = new KafkaStreams(topology, props);
@@ -37,7 +55,7 @@ public class StreamsMain {
 
 		// Attach a shutdown handler to catch control-c and terminate the application
 		// gracefully.
-		Runtime.getRuntime().addShutdownHook(new Thread("shutdown-hook") {
+		Runtime.getRuntime().addShutdownHook(new Thread("streams-shutdown-hook") {
 			@Override
 			public void run() {
 				streams.close();

@@ -17,7 +17,7 @@ application {
 }
 
 
-task(runStreams, dependsOn: 'classes', type: JavaExec) {
-   main = 'com.kafka.stream.StreamsMain'
+task(runWindowing, dependsOn: 'classes', type: JavaExec) {
+   main = 'com.kafka.stream.WindowingMain'
    classpath = sourceSets.main.runtimeClasspath
 }
